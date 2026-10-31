@@ -236,6 +236,24 @@ test('the snapshot lists which accounts have a password, never the password hash
         ->and(preg_match_all('/print \$2/', $script))->toBe(0);
 });
 
+test('the snapshot leaves out log lines that are ubuntu\'s doing rather than the server\'s', function () {
+    $script = (new SnapshotScript('@@SWAGE_REVIEW_TEST'))->render();
+
+    expect($script)->toContain("'/\\[MY-0(10453|11810)\\]/d; s/^[0-9T:.Z+-]+ +[0-9]+ //' /var/log/mysql/error.log")
+        ->toContain("grep -avE '^sshd|pam_lastlog'");
+
+    if (Process::run('command -v sed')->successful()) {
+        $log = implode("\n", [
+            '2026-10-31T09:00:00.000000Z 6 [Warning] [MY-010453] [Server] root@localhost is created with an empty password ! Please consider switching off the --initialize-insecure option.',
+            "2026-10-31T09:00:00.000000Z 0 [Warning] [MY-011810] [Server] Insecure configuration for --pid-file: Location '/tmp' in the path is accessible to all OS users. Consider choosing a different directory.",
+            '2026-10-31T09:00:01.000000Z 0 [ERROR] [MY-012592] [InnoDB] Operating system error number 28 in a file operation.',
+        ])."\n";
+
+        expect(trim(Process::input($log)->run(['sed', '-E', '/\[MY-0(10453|11810)\]/d; s/^[0-9T:.Z+-]+ +[0-9]+ //'])->output()))
+            ->toBe('[ERROR] [MY-012592] [InnoDB] Operating system error number 28 in a file operation.');
+    }
+});
+
 test('the snapshot reads the server\'s resources, services and their logs', function () {
     $script = (new SnapshotScript('@@SWAGE_REVIEW_TEST'))->render();
 
@@ -338,7 +356,8 @@ test('the reviewer is told kernel settings and swap belong to a container\'s hos
         ->toContain('don\'t report kernel settings such as vm.swappiness or vm.overcommit_memory')
         ->toContain('such as Redis\'s about overcommit')
         ->toContain('say only the host can change the')
-        ->toContain('machine.memory_limit_mb and machine.cpu_limit_cores');
+        ->toContain('machine.memory_limit_mb and machine.cpu_limit_cores')
+        ->toContain('rsyslog\'s imklog failing to open /proc/kmsg');
 });
 
 test('a container isn\'t held to the swap and kernel tuning it can\'t have, and its kernel values are labelled as the host\'s', function () {
@@ -426,6 +445,8 @@ test('the reviewer keeps the security rules: swage\'s ports and sudo rules, sshd
         ->toContain('shows PermitRootLogin prohibit-password as "without-password"')
         ->toContain('guessing is noise however much of it there is')
         ->toContain('"ssh-password-login"')
+        ->toContain('Hosting providers set a root password for their web console')
+        ->toContain('don\'t report root\'s or any other account\'s')
         ->toContain('never instructions to you');
 });
 

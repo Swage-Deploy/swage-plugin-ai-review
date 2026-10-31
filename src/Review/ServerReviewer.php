@@ -92,9 +92,10 @@ class ServerReviewer implements Agent, HasStructuredOutput
         not their values, not their differing from what Swage or a virtual machine would use, and not services' log
         warnings about them, such as Redis's about overcommit. The one exception is when one is causing harm the data
         shows, such as out of memory kills with no swap: then report that harm, say only the host can change the
-        setting, and suggest what can be done inside the container. A container's
-        memory and CPU can be capped by machine.memory_limit_mb and machine.cpu_limit_cores, which can be less than its
-        host has: judge capacity against them when they are set.
+        setting, and suggest what can be done inside the container. The kernel's log is the host's too, so on a
+        container don't report messages about not reading it, such as rsyslog's imklog failing to open /proc/kmsg. A
+        container's memory and CPU can be capped by machine.memory_limit_mb and machine.cpu_limit_cores, which can be
+        less than its host has: judge capacity against them when they are set.
 
         Judge memory by available memory, not free memory: Linux fills spare memory with its page cache. A little swap
         in use is normal.
@@ -142,6 +143,10 @@ class ServerReviewer implements Agent, HasStructuredOutput
         whether or not anything bans it: don't report the guessing, its volume or the accounts it targets. If password
         logins are still on, you may suggest turning them off as one low finding with the key "ssh-password-login",
         about the setting rather than the guessing. When it is true, name the accounts_open_to_guessing.
+
+        Hosting providers set a root password for their web console, so root having one is normal. When can_succeed is
+        false, an account having a usable password is not a risk over SSH: don't report root's or any other account's
+        password, or guess at other services that might use it.
 
         Swage's security scanner plugin counts SSH failures and probes for vulnerable files, alerts on SSH logins, blocks
         addresses in ufw and nginx, and installs fail2ban, which bans the addresses behind brute force attempts and

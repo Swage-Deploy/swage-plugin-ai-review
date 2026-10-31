@@ -231,7 +231,9 @@ final readonly class SnapshotScript
 
         section mysql-log
         if command -v mysqld > /dev/null; then
-            log_summary '\[(Warning|ERROR)\]' 's/^[0-9T:.Z+-]+ +[0-9]+ //' /var/log/mysql/error.log.1 /var/log/mysql/error.log
+            # Ubuntu's package starts MySQL once with --initialize-insecure and a temporary config, which warns that root
+            # has an empty password and that its pid file is in /tmp. Root then logs in over the socket, so both are left out.
+            log_summary '\[(Warning|ERROR)\]' '/\[MY-0(10453|11810)\]/d; s/^[0-9T:.Z+-]+ +[0-9]+ //' /var/log/mysql/error.log.1 /var/log/mysql/error.log
         else
             echo 'not installed'
         fi
@@ -299,10 +301,11 @@ final readonly class SnapshotScript
         section failed-units
         if command -v systemctl > /dev/null; then systemctl --failed --no-legend --plain 2>/dev/null | head -n 50 | or_none; else echo unavailable; fi
 
-        # sshd's own errors are left out: they are attackers failing to connect, which the security scanner counts.
+        # sshd's own errors are left out: they are attackers failing to connect, which the security scanner counts. So is
+        # PAM failing to load pam_lastlog: Ubuntu 24.04 dropped the module but its PAM config still names it, as optional.
         section system-errors
         if command -v journalctl > /dev/null; then
-            journalctl -p err --since '-24h' --no-pager -q -o short 2>/dev/null | sed -E 's/^[A-Za-z]+ +[0-9]+ [0-9:]+ [^ ]+ //; s/\[[0-9]+\]//' | grep -av '^sshd' | cut -c1-200 | sort | uniq -c | sort -rn | head -n 25 | or_none
+            journalctl -p err --since '-24h' --no-pager -q -o short 2>/dev/null | sed -E 's/^[A-Za-z]+ +[0-9]+ [0-9:]+ [^ ]+ //; s/\[[0-9]+\]//' | grep -avE '^sshd|pam_lastlog' | cut -c1-200 | sort | uniq -c | sort -rn | head -n 25 | or_none
         else
             echo unavailable
         fi
