@@ -32,6 +32,7 @@ use Swage\AiReview\Models\IgnoredFinding;
 use Swage\AiReview\Models\Review;
 use Swage\AiReview\Models\ReviewState;
 use Swage\AiReview\Review\Capacity;
+use Swage\AiReview\Review\NetworkExposure;
 use Swage\AiReview\Review\ReviewContext;
 use Swage\AiReview\Review\SecurityScanner;
 use Swage\AiReview\Review\ServerReviewer;
@@ -240,7 +241,7 @@ test('the snapshot leaves out log lines that are ubuntu\'s doing rather than the
     $script = (new SnapshotScript('@@SWAGE_REVIEW_TEST'))->render();
 
     expect($script)->toContain("'/\\[MY-0(10453|11810)\\]/d; s/^[0-9T:.Z+-]+ +[0-9]+ //' /var/log/mysql/error.log")
-        ->toContain("grep -avE '^sshd|pam_lastlog'");
+        ->toContain("grep -avE '^sshd|pam_lastlog|Seat has no VTs'");
 
     if (Process::run('command -v sed')->successful()) {
         $log = implode("\n", [
@@ -338,6 +339,54 @@ test('the review is told whether ssh password guesses could ever succeed', funct
     'no passwords' => [['sshd' => 'passwordauthentication yes', 'accounts' => 'root uid=0 /bin/bash', 'passwords' => 'none'], false, []],
     'unreadable' => [['sshd' => 'passwordauthentication yes', 'accounts' => 'root uid=0 /bin/bash', 'passwords' => 'unavailable'], null, []],
 ]);
+
+test('the review is told which services other machines can reach, from the listening ports and ufw\'s rules', function () {
+    $listening = implode("\n", [
+        'udp 127.0.0.53%lo:53 users:(("systemd-resolve",pid=249,fd=14))',
+        'tcp 127.0.0.1:6379 users:(("redis-server",pid=297,fd=6))',
+        'tcp 127.0.0.1:3306 users:(("mysqld",pid=321,fd=26))',
+        'tcp 0.0.0.0:22 users:(("sshd",pid=319,fd=3),("systemd",pid=1,fd=48))',
+        'tcp 0.0.0.0:80 users:(("nginx",pid=475,fd=5),("nginx",pid=474,fd=5))',
+        'tcp [::1]:6379 users:(("redis-server",pid=297,fd=7))',
+        'tcp [::]:22 users:(("sshd",pid=319,fd=4),("systemd",pid=1,fd=49))',
+        'tcp [::]:80 users:(("nginx",pid=475,fd=6))',
+        'tcp 0.0.0.0:5432 users:(("postgres",pid=500,fd=6))',
+        'tcp *:9000 users:(("node",pid=600,fd=20))',
+    ]);
+    $firewall = "Status: active\nLogging: on (low)\nDefault: deny (incoming), allow (outgoing), disabled (routed)\nNew profiles: skip\n\nTo                         Action      From\n--                         ------      ----\n22/tcp                     ALLOW IN    Anywhere                  \n80/tcp                     ALLOW IN    Anywhere                  \n443/tcp                    ALLOW IN    Anywhere                  \n5432/tcp                   ALLOW IN    10.0.0.5                   # swage-database\n22/tcp (v6)                ALLOW IN    Anywhere (v6)             \n80/tcp (v6)                ALLOW IN    Anywhere (v6)             \n443/tcp (v6)               ALLOW IN    Anywhere (v6)";
+
+    $exposure = app(ReviewContext::class)->build(Server::factory()->create(), ['listening' => $listening, 'firewall' => $firewall])['network_exposure'];
+
+    expect($exposure)->toBe([
+        'firewall' => 'ufw is active and denies incoming connections by default',
+        'reachable_from_other_machines' => [
+            ['service' => 'sshd, systemd', 'port' => '22/tcp', 'addresses' => ['0.0.0.0', '[::]'], 'open_to' => 'anywhere'],
+            ['service' => 'nginx', 'port' => '80/tcp', 'addresses' => ['0.0.0.0', '[::]'], 'open_to' => 'anywhere'],
+            ['service' => 'postgres', 'port' => '5432/tcp', 'addresses' => ['0.0.0.0'], 'open_to' => ['10.0.0.5']],
+        ],
+        'listening_publicly_but_blocked_by_firewall' => [
+            ['service' => 'node', 'port' => '9000/tcp', 'addresses' => ['*']],
+        ],
+        'listening_only_on_this_server' => ['systemd-resolve on 53/udp', 'redis-server on 6379/tcp', 'mysqld on 3306/tcp'],
+    ]);
+
+    $inactive = app(NetworkExposure::class)->for(['listening' => 'tcp 0.0.0.0:3306 users:(("mysqld",pid=1,fd=2))', 'firewall' => 'Status: inactive']);
+    $denied = app(NetworkExposure::class)->for(['listening' => 'tcp 0.0.0.0:3306 users:(("mysqld",pid=1,fd=2))', 'firewall' => "Status: active\nDefault: allow (incoming), allow (outgoing)\n\nTo  Action  From\n--  ------  ----\n3306/tcp  DENY IN  Anywhere\n3306/tcp  ALLOW IN  Anywhere\nNginx Full  ALLOW IN  Anywhere"]);
+    $ranges = app(NetworkExposure::class)->for(['listening' => 'tcp 0.0.0.0:6001 users:(("php",pid=1,fd=2))', 'firewall' => "Status: active\nDefault: deny (incoming), allow (outgoing)\n\nTo  Action  From\n--  ------  ----\n80,6000:6007/tcp  ALLOW IN  Anywhere"]);
+    $unread = app(NetworkExposure::class)->for(['listening' => 'tcp 0.0.0.0:6001 users:(("php",pid=1,fd=2))', 'firewall' => "Status: active\nDefault: deny (incoming), allow (outgoing)\n\nTo  Action  From\n--  ------  ----\nReverb  ALLOW IN  Anywhere"]);
+
+    expect($inactive['firewall'])->toBe('ufw is inactive, so nothing is blocked')
+        ->and($inactive['reachable_from_other_machines'][0]['open_to'])->toBe('anywhere')
+        ->and($denied['listening_publicly_but_blocked_by_firewall'][0]['service'])->toBe('mysqld')
+        ->and($denied['firewall_rules_not_understood'])->toBe(['Nginx Full  ALLOW IN  Anywhere'])
+        ->and($ranges['reachable_from_other_machines'][0]['open_to'])->toBe('anywhere')
+        ->and($unread['reachable_from_other_machines'][0]['open_to'])->toBe('nobody, unless a rule under firewall_rules_not_understood allows it')
+        ->and(app(NetworkExposure::class)->for(['listening' => 'tcp 0.0.0.0:22 users:(("sshd",pid=1,fd=2))', 'firewall' => 'unavailable'])['reachable_from_other_machines'][0]['open_to'])->toBe('unknown: the firewall could not be read')
+        ->and(app(NetworkExposure::class)->for(['listening' => 'unavailable']))->toBeNull()
+        ->and((new ServerReviewer)->instructions())
+        ->toContain('network_exposure says which services other machines can reach')
+        ->toContain('don\'t report them as exposed');
+});
 
 test('the review is told whether the server is a container, and the limits it runs under', function (string $section, ?array $machine) {
     expect(app(ReviewContext::class)->build(Server::factory()->create(), ['machine' => $section])['machine'])->toBe($machine);

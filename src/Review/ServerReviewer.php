@@ -134,8 +134,14 @@ class ServerReviewer implements Agent, HasStructuredOutput
         Swage's ufw allows its SSH port, and 80 and 443 for the sites, from anywhere. Serving websites is the server's
         job, so don't report those ports being open, or nginx listening on them. A database port allowed only from
         specific addresses with the comment swage-database is also Swage's doing, for remote database access people
-        asked for. Do report any other port open to anywhere, a database port open to anywhere, and services listening
-        on public addresses that the firewall would let through.
+        asked for. Do report any other port open to anywhere, and a database port open to anywhere.
+
+        network_exposure says which services other machines can reach, worked out by Swage from the listening ports and
+        ufw's rules. Trust it rather than reading the addresses yourself. Only services under
+        reachable_from_other_machines can be reached, and open_to says from where. Services under
+        listening_only_on_this_server, such as MySQL or Redis on 127.0.0.1, can't be reached from other machines at all:
+        don't report them as exposed. A service under listening_publicly_but_blocked_by_firewall can't be reached either,
+        because ufw blocks it: at most, suggest it listen only on 127.0.0.1 as one low finding.
 
         Swage gives its own server user and each site's user passwordless sudo for only /usr/local/sbin/swage-reload-php
         and /usr/local/sbin/swage-restart-daemon. These root-owned helpers check their arguments, and only reload PHP-FPM

@@ -304,9 +304,10 @@ final readonly class SnapshotScript
 
         # sshd's own errors are left out: they are attackers failing to connect, which the security scanner counts. So is
         # PAM failing to load pam_lastlog: Ubuntu 24.04 dropped the module but its PAM config still names it, as optional.
+        # And a console login in a container, which has no virtual terminals, failing to get a systemd seat.
         section system-errors
         if command -v journalctl > /dev/null; then
-            journalctl -p err --since '-24h' --no-pager -q -o short 2>/dev/null | sed -E 's/^[A-Za-z]+ +[0-9]+ [0-9:]+ [^ ]+ //; s/\[[0-9]+\]//' | grep -avE '^sshd|pam_lastlog' | cut -c1-200 | sort | uniq -c | sort -rn | head -n 25 | or_none
+            journalctl -p err --since '-24h' --no-pager -q -o short 2>/dev/null | sed -E 's/^[A-Za-z]+ +[0-9]+ [0-9:]+ [^ ]+ //; s/\[[0-9]+\]//' | grep -avE '^sshd|pam_lastlog|Seat has no VTs' | cut -c1-200 | sort | uniq -c | sort -rn | head -n 25 | or_none
         else
             echo unavailable
         fi

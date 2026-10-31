@@ -16,7 +16,7 @@ class ReviewContext
      */
     public const int MAX_OVERRIDE_BYTES = 2000;
 
-    public function __construct(protected Capacity $capacity, protected SecurityScanner $scanner) {}
+    public function __construct(protected Capacity $capacity, protected SecurityScanner $scanner, protected NetworkExposure $exposure) {}
 
     /**
      * The data the review is given, as the JSON sent, which is stored with the review so people can see what it saw.
@@ -55,6 +55,7 @@ class ReviewContext
             'machine' => $machine,
             'capacity' => $this->capacity->for($server, $snapshot),
             'ssh_password_guesses' => $this->passwordGuesses($snapshot),
+            'network_exposure' => $this->exposure->for($snapshot),
             'security_scanner' => $this->scanner->for($server),
             'ignored_findings' => IgnoredFinding::query()->where('server_id', $server->id)->orderBy('key')->get()
                 ->map(fn (IgnoredFinding $finding): array => ['key' => $finding->key, 'title' => $finding->title])->all(),
