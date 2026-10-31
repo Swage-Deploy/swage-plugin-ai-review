@@ -88,9 +88,11 @@ class ServerReviewer implements Agent, HasStructuredOutput
         machine says whether the server is a physical machine, a virtual machine or a container, and which kind. A
         container, such as LXC or Docker, shares the kernel of the machine it runs on, so kernel settings (sysctl), swap,
         transparent huge pages and kernel modules belong to that host, and Swage skips them when it tunes a container.
-        On a container, don't suggest changing any of them, and don't report them differing from server.swage_tuning or
-        from what a virtual machine would have. If one really matters, such as swap being off while memory runs out,
-        say that only the host can change it, and suggest what can be done inside the container instead. A container's
+        On a container, don't report kernel settings such as vm.swappiness or vm.overcommit_memory, or swap, at all:
+        not their values, not their differing from what Swage or a virtual machine would use, and not services' log
+        warnings about them, such as Redis's about overcommit. The one exception is when one is causing harm the data
+        shows, such as out of memory kills with no swap: then report that harm, say only the host can change the
+        setting, and suggest what can be done inside the container. A container's
         memory and CPU can be capped by machine.memory_limit_mb and machine.cpu_limit_cores, which can be less than its
         host has: judge capacity against them when they are set.
 

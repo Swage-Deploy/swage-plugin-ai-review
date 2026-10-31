@@ -335,9 +335,25 @@ test('the reviewer is told kernel settings and swap belong to a container\'s hos
     expect((new ServerReviewer)->instructions())
         ->toContain('shares the kernel of the machine it runs on')
         ->toContain('Swage skips them when it tunes a container')
-        ->toContain('don\'t suggest changing any of them')
-        ->toContain('only the host can change it')
+        ->toContain('don\'t report kernel settings such as vm.swappiness or vm.overcommit_memory')
+        ->toContain('such as Redis\'s about overcommit')
+        ->toContain('say only the host can change the')
         ->toContain('machine.memory_limit_mb and machine.cpu_limit_cores');
+});
+
+test('a container isn\'t held to the swap and kernel tuning it can\'t have, and its kernel values are labelled as the host\'s', function () {
+    $server = Server::factory()->create(['tuning' => ['swap' => ['swappiness' => 10], 'kernel' => ['vm.overcommit_memory' => 1], 'php' => ['memory_budget_mb' => 2100]]]);
+    $resources = "cpu cores: 2\nvm.swappiness = 60\nvm.overcommit_memory = 0";
+
+    $container = app(ReviewContext::class)->build($server, ['machine' => "virtualization: lxc\ncontainer: lxc", 'resources' => $resources]);
+    $vm = app(ReviewContext::class)->build($server, ['machine' => "virtualization: kvm\ncontainer: none", 'resources' => $resources]);
+
+    expect($container['server']['swage_tuning'])->not->toHaveKeys(['swap', 'kernel'])
+        ->and($container['server']['swage_tuning']['php'])->toBe(['memory_budget_mb' => 2100])
+        ->and($container['server']['swage_tuning']['swap_and_kernel'])->toContain('this server is a container')
+        ->and($container['snapshot']['CPU, load, memory, swap and kernel limits'])->toBe("cpu cores: 2\nvm.swappiness = 60 (the host's, which this container can't change)\nvm.overcommit_memory = 0 (the host's, which this container can't change)")
+        ->and($vm['server']['swage_tuning'])->toHaveKeys(['swap', 'kernel'])
+        ->and($vm['snapshot']['CPU, load, memory, swap and kernel limits'])->toBe($resources);
 });
 
 test('a server with no supervisor programs isn\'t counted as unreadable', function () {

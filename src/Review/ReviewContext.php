@@ -42,10 +42,17 @@ class ReviewContext
      */
     public function build(Server $server, array $snapshot): array
     {
+        $machine = $this->machine($snapshot['machine'] ?? '');
+        $inContainer = (bool) ($machine['shares_host_kernel'] ?? false);
+
+        if ($inContainer && isset($snapshot['resources'])) {
+            $snapshot['resources'] = $this->labelHostKernel($snapshot['resources']);
+        }
+
         return [
             'reviewed_at' => now()->toIso8601String(),
-            'server' => $this->server($server),
-            'machine' => $this->machine($snapshot['machine'] ?? ''),
+            'server' => $this->server($server, $inContainer),
+            'machine' => $machine,
             'capacity' => $this->capacity->for($server, $snapshot),
             'ssh_password_guesses' => $this->passwordGuesses($snapshot),
             'security_scanner' => $this->scanner->for($server),
@@ -62,7 +69,7 @@ class ReviewContext
      *
      * @return array<string, mixed>
      */
-    protected function server(Server $server): array
+    protected function server(Server $server, bool $inContainer = false): array
     {
         return [
             'type' => $server->type->value,
@@ -78,12 +85,38 @@ class ReviewContext
             'redis' => (bool) $server->has_redis,
             'sites' => $server->sites()->count(),
             'daemons' => $server->daemons()->count(),
-            'swage_tuning' => $server->tuning,
+            'swage_tuning' => $inContainer ? $this->withoutHostTuning($server->tuning) : $server->tuning,
             'config_overrides' => collect($server->config_overrides ?? [])
                 ->filter(fn (mixed $override): bool => is_string($override) && trim($override) !== '')
                 ->map(fn (string $override): string => mb_strcut($override, 0, self::MAX_OVERRIDE_BYTES))
                 ->all(),
         ];
+    }
+
+    /**
+     * A container can't change swap or kernel settings, which belong to its host, so Swage skips them when it tunes
+     * one. What it would have set is left out, so the review doesn't hold the container to it.
+     *
+     * @param  array<string, mixed>|null  $tuning
+     * @return array<string, mixed>|null
+     */
+    protected function withoutHostTuning(?array $tuning): ?array
+    {
+        if ($tuning === null) {
+            return null;
+        }
+
+        unset($tuning['swap'], $tuning['kernel']);
+
+        return [...$tuning, 'swap_and_kernel' => 'Not set by Swage: this server is a container, and its swap and kernel settings belong to the machine it runs on.'];
+    }
+
+    /**
+     * Say that the kernel settings a container reports are its host's, which only the host can change.
+     */
+    protected function labelHostKernel(string $resources): string
+    {
+        return (string) preg_replace('/^((?:vm|fs|net|kernel)\.[\w.]+ = .*)$/m', '$1 (the host\'s, which this container can\'t change)', $resources);
     }
 
     /**
