@@ -1,0 +1,24 @@
+# Signs, tags and publishes a release from main. Run it from the Actions tab with the new version, then approve the
+# run when GitHub asks: the signing key is only handed to runs a maintainer approves.
+
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The version to release, such as v1.2.0. It must be newer than the latest release.
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  checks: read
+  statuses: read
+
+jobs:
+  release:
+    uses: Swage-Deploy/swage-core/.github/workflows/sign-release.yml@main
+    with:
+      version: ${{ inputs.version }}
+    secrets: inherit

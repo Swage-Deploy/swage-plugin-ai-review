@@ -1,0 +1,27 @@
+{
+    "name": "swage/ai-review",
+    "description": "Has an AI model review each server's security, performance and reliability for Swage, from a read-only snapshot of its setup, resources and service logs, and suggest what to fix.",
+    "type": "swage-plugin",
+    "license": "MIT",
+    "require": {
+        "php": "^8.3",
+        "laravel/framework": "^13.0",
+        "laravel/ai": "^1.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "Swage\\AiReview\\": "src/"
+        }
+    },
+    "extra": {
+        "swage": {
+            "kind": "server-integration",
+            "contract": 1
+        },
+        "laravel": {
+            "providers": [
+                "Swage\\AiReview\\AiReviewServiceProvider"
+            ]
+        }
+    }
+}
