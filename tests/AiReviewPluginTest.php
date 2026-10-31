@@ -321,6 +321,34 @@ test('the review is told whether ssh password guesses could ever succeed', funct
     'unreadable' => [['sshd' => 'passwordauthentication yes', 'accounts' => 'root uid=0 /bin/bash', 'passwords' => 'unavailable'], null, []],
 ]);
 
+test('the review is told whether the server is a container, and the limits it runs under', function (string $section, ?array $machine) {
+    expect(app(ReviewContext::class)->build(Server::factory()->create(), ['machine' => $section])['machine'])->toBe($machine);
+})->with([
+    'an lxc container with limits' => ["virtualization: lxc\ncontainer: lxc\ncgroup memory.max: 4294967296\ncgroup memory.swap.max: 0\ncgroup cpu.max: 200000 100000", ['kind' => 'container', 'technology' => 'lxc', 'hardware' => null, 'shares_host_kernel' => true, 'memory_limit_mb' => 4096, 'cpu_limit_cores' => 2.0]],
+    'a container without limits' => ["virtualization: lxc\ncontainer: lxc\ncgroup memory.max: max\ncgroup cpu.max: max 100000", ['kind' => 'container', 'technology' => 'lxc', 'hardware' => null, 'shares_host_kernel' => true, 'memory_limit_mb' => null, 'cpu_limit_cores' => null]],
+    'a virtual machine' => ["virtualization: kvm\ncontainer: none\nhardware: QEMU Standard PC (Q35 + ICH9, 2009)\ncgroup memory.max: max", ['kind' => 'virtual machine', 'technology' => 'kvm', 'hardware' => 'QEMU Standard PC (Q35 + ICH9, 2009)', 'shares_host_kernel' => false, 'memory_limit_mb' => null, 'cpu_limit_cores' => null]],
+    'a physical machine' => ["virtualization: none\ncontainer: none\nhardware: Dell Inc. PowerEdge R640", ['kind' => 'physical machine', 'technology' => null, 'hardware' => 'Dell Inc. PowerEdge R640', 'shares_host_kernel' => false, 'memory_limit_mb' => null, 'cpu_limit_cores' => null]],
+    'unreadable' => ['unavailable', null],
+]);
+
+test('the reviewer is told kernel settings and swap belong to a container\'s host', function () {
+    expect((new ServerReviewer)->instructions())
+        ->toContain('shares the kernel of the machine it runs on')
+        ->toContain('Swage skips them when it tunes a container')
+        ->toContain('don\'t suggest changing any of them')
+        ->toContain('only the host can change it')
+        ->toContain('machine.memory_limit_mb and machine.cpu_limit_cores');
+});
+
+test('a server with no supervisor programs isn\'t counted as unreadable', function () {
+    $script = (new SnapshotScript('@@SWAGE_REVIEW_TEST'))->render();
+
+    expect($script)->toContain("elif [ \"\$code\" = 0 ]; then\n        echo none")
+        ->and($script)->toContain('systemd-detect-virt --container')
+        ->and($script)->toContain('/sys/fs/cgroup/memory.max')
+        ->and(SnapshotScript::missing(['supervisor' => 'none']))->not->toContain('supervisor');
+});
+
 test('the review is told about the server\'s hardware, services, tuning and config overrides', function () {
     $server = Server::factory()->create(['cpu_cores' => 2, 'memory_mb' => 4096, 'disk_gb' => 80, 'has_redis' => true, 'tuning' => ['php' => ['memory_budget_mb' => 2100]], 'config_overrides' => ['mysql' => 'max_connections = 300', 'redis' => '']]);
 

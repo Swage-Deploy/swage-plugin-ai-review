@@ -34,6 +34,7 @@ final readonly class SnapshotScript
      */
     public const array SECTIONS = [
         'os' => 'Operating system and kernel',
+        'machine' => 'Virtual machine or container, and its limits',
         'reboot-required' => 'Reboot required by updates',
         'updates' => 'Packages with pending updates',
         'auto-updates' => 'Automatic security updates',
@@ -103,6 +104,25 @@ final readonly class SnapshotScript
 
         section os
         { sed -n 's/^PRETTY_NAME=//p' /etc/os-release 2>/dev/null | tr -d '"'; uname -r; uptime -p 2>/dev/null; } | or_none
+
+        # A container shares the kernel of the machine it runs on, so kernel settings and swap are that machine's, and
+        # its memory and CPU can be capped by its cgroup's limits, which "max" leaves unlimited.
+        section machine
+        if command -v systemd-detect-virt > /dev/null; then
+            virt=$(systemd-detect-virt 2>/dev/null)
+            container=$(systemd-detect-virt --container 2>/dev/null)
+            echo "virtualization: ${virt:-none}"
+            echo "container: ${container:-none}"
+            vendor=$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null)
+            product=$(cat /sys/class/dmi/id/product_name 2>/dev/null)
+            [ -n "$vendor$product" ] && echo "hardware: $vendor $product"
+            [ -r /sys/fs/cgroup/memory.max ] && echo "cgroup memory.max: $(cat /sys/fs/cgroup/memory.max)"
+            [ -r /sys/fs/cgroup/memory.swap.max ] && echo "cgroup memory.swap.max: $(cat /sys/fs/cgroup/memory.swap.max)"
+            [ -r /sys/fs/cgroup/cpu.max ] && echo "cgroup cpu.max: $(cat /sys/fs/cgroup/cpu.max)"
+            true
+        else
+            echo unavailable
+        fi
 
         section reboot-required
         if [ -f /var/run/reboot-required ]; then echo yes; cat /var/run/reboot-required.pkgs 2>/dev/null; else echo no; fi
@@ -257,11 +277,18 @@ final readonly class SnapshotScript
         fi
 
         # It exits non-zero when any program isn't running, so its output is read either way.
+        # It prints nothing when no programs are set up, and exits non-zero when one isn't running, or when it can't
+        # reach supervisord, which it says on its output.
         section supervisor
         if command -v supervisorctl > /dev/null; then
             out=$(supervisorctl status 2>/dev/null)
-            if [ -n "$out" ]; then
+            code=$?
+            if printf '%s\n' "$out" | grep -qiE 'unix://|refused|no such file'; then
+                echo unavailable
+            elif [ -n "$out" ]; then
                 printf '%s\n' "$out" | awk '$2 == "RUNNING" { running++; next } { print } END { print running + 0, "programs running" }'
+            elif [ "$code" = 0 ]; then
+                echo none
             else
                 echo unavailable
             fi

@@ -45,6 +45,7 @@ class ReviewContext
         return [
             'reviewed_at' => now()->toIso8601String(),
             'server' => $this->server($server),
+            'machine' => $this->machine($snapshot['machine'] ?? ''),
             'capacity' => $this->capacity->for($server, $snapshot),
             'ssh_password_guesses' => $this->passwordGuesses($snapshot),
             'security_scanner' => $this->scanner->for($server),
@@ -82,6 +83,41 @@ class ReviewContext
                 ->filter(fn (mixed $override): bool => is_string($override) && trim($override) !== '')
                 ->map(fn (string $override): string => mb_strcut($override, 0, self::MAX_OVERRIDE_BYTES))
                 ->all(),
+        ];
+    }
+
+    /**
+     * Whether the server is a virtual machine or a container, and the memory and CPU a container is limited to, which
+     * can be less than its host has.
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function machine(string $section): ?array
+    {
+        if (in_array(trim($section), ['', 'unavailable'], true)) {
+            return null;
+        }
+
+        $values = collect(explode("\n", $section))
+            ->map(fn (string $line): array => array_map(trim(...), explode(':', $line, 2)) + [1 => ''])
+            ->mapWithKeys(fn (array $pair): array => [$pair[0] => $pair[1]]);
+
+        $container = $values->get('container', 'none');
+        $virtualization = $values->get('virtualization', 'none');
+        $memory = $values->get('cgroup memory.max');
+        $cpu = preg_split('/\s+/', (string) $values->get('cgroup cpu.max', ''));
+
+        return [
+            'kind' => match (true) {
+                $container !== 'none' => 'container',
+                $virtualization !== 'none' => 'virtual machine',
+                default => 'physical machine',
+            },
+            'technology' => $container !== 'none' ? $container : ($virtualization !== 'none' ? $virtualization : null),
+            'hardware' => $values->get('hardware'),
+            'shares_host_kernel' => $container !== 'none',
+            'memory_limit_mb' => is_numeric($memory) ? intdiv((int) $memory, 1024 * 1024) : null,
+            'cpu_limit_cores' => is_numeric($cpu[0] ?? null) && is_numeric($cpu[1] ?? null) && (int) $cpu[1] > 0 ? round((int) $cpu[0] / (int) $cpu[1], 2) : null,
         ];
     }
 

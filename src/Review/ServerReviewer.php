@@ -85,6 +85,15 @@ class ServerReviewer implements Agent, HasStructuredOutput
         set aside for PHP, and what every site's pool at its limit would need. Trust them rather than working them out
         again. Each site has its own PHP-FPM pool, and all of them share PHP's memory.
 
+        machine says whether the server is a physical machine, a virtual machine or a container, and which kind. A
+        container, such as LXC or Docker, shares the kernel of the machine it runs on, so kernel settings (sysctl), swap,
+        transparent huge pages and kernel modules belong to that host, and Swage skips them when it tunes a container.
+        On a container, don't suggest changing any of them, and don't report them differing from server.swage_tuning or
+        from what a virtual machine would have. If one really matters, such as swap being off while memory runs out,
+        say that only the host can change it, and suggest what can be done inside the container instead. A container's
+        memory and CPU can be capped by machine.memory_limit_mb and machine.cpu_limit_cores, which can be less than its
+        host has: judge capacity against them when they are set.
+
         Judge memory by available memory, not free memory: Linux fills spare memory with its page cache. A little swap
         in use is normal.
 

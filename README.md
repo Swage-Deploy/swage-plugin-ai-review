@@ -51,13 +51,14 @@ The plugin used to be part of the [Security scanner](https://github.com/Swage-De
 | Part | What's read |
 |---|---|
 | Setup | OS and kernel, whether a reboot is required, packages with pending updates, whether automatic updates are on |
+| Machine | Whether it's a physical machine, a virtual machine or a container, and which kind, from `systemd-detect-virt`, its hardware name, and its cgroup's memory, swap and CPU limits |
 | Resources | CPU cores, load, `free -m`, swap, a few kernel limits, `df` for space and inodes, the largest things in `/var/log`, memory by command, and out of memory kills in the last 7 days |
 | PHP-FPM | For each PHP version: each pool's `pm.*` settings, `php.ini` limits such as `memory_limit` and OPcache's, and each pool's workers with their average and largest memory |
 | nginx | Worker settings, and a summary of every error log |
 | MySQL | Key settings and figures from `SHOW GLOBAL VARIABLES` and `SHOW GLOBAL STATUS`, such as `Max_used_connections`, aborted connections, temporary tables on disk and buffer pool reads, and a summary of its error log |
 | PostgreSQL | Key settings, connections, and per database figures from `pg_stat_database`, and a summary of its log |
 | Redis | Memory against `maxmemory`, evicted keys, refused connections and persistence status from `INFO`, and a summary of its log |
-| Supervisor and systemd | Supervisor programs that aren't running, failed systemd units, and a summary of the last day of system journal errors, leaving out sshd's |
+| Supervisor and systemd | Supervisor programs that aren't running (a server with no programs set up reads as none, not as unreadable), failed systemd units, and a summary of the last day of system journal errors, leaving out sshd's |
 | Security | The effective `sshd` settings, listening ports, `ufw status`, accounts that can log in, which accounts have a usable password (only their names, never the password hashes), how many authorized SSH keys each has, passwordless sudo rules and recent logins |
 
 Log summaries are made on the server: lines at warning level or worse are counted once times, ids and request details are taken out of them, such as `41 WARNING: [pool example_com] server reached pm.max_children setting (10)`. Each says how many files and lines it read and how the first one starts, so the model can tell how long it covers. Each log's current file and last rotated one are read. Sites' own Laravel logs are never read.
@@ -75,6 +76,7 @@ All of this includes IP addresses, account names and log messages, so only use a
 Besides the shape of its answer, the model is told how Swage sets servers up, and:
 
 - **to base suggestions on the hardware.** It's to say what to change and to what, with the arithmetic, never suggest a value the memory can't hold, and say when the server needs more memory instead. It's to trust Swage's figures, judge memory by available memory rather than free memory, and weigh a limit being reached by how often and how recently it happened.
+- **that a container's kernel belongs to its host.** On an LXC or Docker container, kernel settings, swap, transparent huge pages and kernel modules are the host's, and Swage skips them when it tunes the server, so the review doesn't suggest changing them or report them differing from Swage's tuning. When one really matters, it says only the host can change it. A container's memory and CPU limits, worked out from its cgroup as `machine.memory_limit_mb` and `machine.cpu_limit_cores`, are what capacity is judged against when they're set.
 - **not to report healthy figures or defaults,** or suggest changes for their own sake, and to suggest changes through Swage where it can, such as the server's **Config** page.
 - **which of Swage's own settings are expected.** Ports 80 and 443 and the SSH port open to everyone, database ports opened to chosen addresses with the `swage-database` comment, and Swage's own passwordless sudo rules aren't reported. Any other open port or sudo rule still is. `sshd -T` printing `PermitRootLogin prohibit-password` as `without-password` isn't reported either.
 - **that SSH guessing is noise when no guess can succeed,** whatever its volume. Turning off password logins can still be suggested as one low finding.
