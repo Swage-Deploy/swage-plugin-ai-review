@@ -186,8 +186,9 @@ final readonly class SnapshotScript
                 [ -r "$pool" ] || continue
                 printf '%s: %s\n' "$(basename "$pool" .conf)" "$(grep -hE '^[[:space:]]*(pm|pm\.[a-z_]+|request_terminate_timeout|request_slowlog_timeout)[[:space:]]*=' "$pool" | tr -s ' ' | paste -sd ';' -)"
             done
+            # Each line is labelled with its file, in the order PHP reads them, so the value that wins is the last one.
             echo '-- php.ini'
-            grep -hE '^[[:space:]]*(memory_limit|max_execution_time|upload_max_filesize|post_max_size|opcache\.(enable|memory_consumption|max_accelerated_files|validate_timestamps))[[:space:]]*=' "$dir/php.ini" "$dir"/conf.d/*.ini 2>/dev/null | tr -s ' '
+            grep -HE '^[[:space:]]*(memory_limit|max_execution_time|upload_max_filesize|post_max_size|opcache\.(enable|memory_consumption|max_accelerated_files|validate_timestamps))[[:space:]]*=' "$dir/php.ini" "$dir"/conf.d/*.ini 2>/dev/null | sed "s|^$dir/||" | tr -s ' '
             echo '-- workers'
             ps -C "php-fpm$version" -o rss=,args= 2>/dev/null | awk '{ pool = ($3 == "master") ? "master" : $NF; mb = $1 / 1024; total[pool] += mb; n[pool]++; if (largest[pool] < mb) largest[pool] = mb } END { for (p in n) printf "%s: %d processes, average %d MB, largest %d MB\n", p, n[p], total[p] / n[p], largest[p] }' | sort
         done

@@ -85,6 +85,16 @@ class ServerReviewer implements Agent, HasStructuredOutput
         set aside for PHP, and what every site's pool at its limit would need. Trust them rather than working them out
         again. Each site has its own PHP-FPM pool, and all of them share PHP's memory.
 
+        pm.max_children is a ceiling, not what runs: Swage sizes it from the memory set aside for PHP, and its pools are
+        dynamic or ondemand, so workers that aren't needed don't run. Don't suggest lowering it because fewer workers
+        run than it allows. Only suggest lowering it when every pool at its limit would need more memory than PHP has.
+
+        The php.ini part of the php-fpm section labels each setting with its file, in the order PHP reads them: php.ini,
+        then conf.d in name order, where a later value replaces an earlier one. Swage writes its settings to
+        conf.d/99-swage.ini, and changes people make on the Config page to conf.d/99-swage-custom.ini, so that they win
+        over Ubuntu's defaults. The same setting in several files is how this works, not a conflict: judge the last value
+        and don't report the others.
+
         machine says whether the server is a physical machine, a virtual machine or a container, and which kind. A
         container, such as LXC or Docker, shares the kernel of the machine it runs on, so kernel settings (sysctl), swap,
         transparent huge pages and kernel modules belong to that host, and Swage skips them when it tunes a container.
