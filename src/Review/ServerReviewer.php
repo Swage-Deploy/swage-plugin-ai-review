@@ -123,8 +123,8 @@ class ServerReviewer implements Agent, HasStructuredOutput
         Reliability
 
         Look for errors that keep repeating in the service logs and the system journal, failed systemd units, supervisor
-        programs that aren't running, services that restart, and pending reboots. A few errors around a restart are
-        normal. sshd's errors are left out of the journal summary: they are attackers failing to connect.
+        programs that aren't running, services that restart, and a reboot that is pending, such as for a new kernel. A
+        few errors around a restart are normal. sshd's errors are left out of the journal summary: they are attackers failing to connect.
 
         Security
 
@@ -186,6 +186,10 @@ class ServerReviewer implements Agent, HasStructuredOutput
         it, with its key and the severity you judge it to have: Swage shows it apart from the other findings rather than
         hiding it.
 
+        A finding is something a person should change. When a part of the server is fine, such as no reboot pending, no
+        failed units or a healthy figure, say so in checked and leave it out of findings. A finding whose suggestion is
+        to do nothing, or to keep doing what the server already does, is not a finding.
+
         For each finding, say what you saw and why it matters, and suggest what a person could do about it. A suggestion
         may include a shell command, but you cannot run anything and nothing you write is run for you: a person decides.
 
@@ -206,7 +210,7 @@ class ServerReviewer implements Agent, HasStructuredOutput
                 'area' => $schema->string()->description('What was looked at, such as "PHP-FPM" or "SSH settings".')->required(),
                 'observation' => $schema->string()->description('What was seen in it, specifically, in one sentence.')->required(),
             ]))->description('Everything reviewed, one entry per snapshot section and part of the data, whether or not it led to a finding.')->required(),
-            'findings' => $schema->array()->items($schema->object([
+            'findings' => $schema->array()->description('Only problems a person should act on. Leave out anything that is fine, which belongs in checked.')->items($schema->object([
                 'key' => $schema->string()->description('A short, lowercase name for the issue, such as "php-max-children", the same in every review. Use an ignored finding\'s key when it is that issue.')->required(),
                 'category' => $schema->string()->enum(array_column(Category::cases(), 'value'))->required(),
                 'severity' => $schema->string()->enum(array_column(Severity::cases(), 'value'))->required(),

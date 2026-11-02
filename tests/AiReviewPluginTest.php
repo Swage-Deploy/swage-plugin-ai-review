@@ -834,3 +834,11 @@ test('servers whose latest review has findings nobody ignored get a badge', func
         ->and($attention[$server->id]->severity)->toBe(Attention::MEDIUM)
         ->and($attention[$server->id]->label)->toBe('AI review: 2 findings');
 });
+
+test('the reviewer is told to keep what is fine out of its findings', function () {
+    expect((new ServerReviewer)->instructions())
+        ->toContain('A finding is something a person should change')
+        ->toContain('such as no reboot pending')
+        ->toContain('is not a finding')
+        ->toContain('Only problems a person should act on');
+});
