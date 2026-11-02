@@ -385,7 +385,8 @@ test('the review is told which services other machines can reach, from the liste
         ->and(app(NetworkExposure::class)->for(['listening' => 'unavailable']))->toBeNull()
         ->and((new ServerReviewer)->instructions())
         ->toContain('network_exposure says which services other machines can reach')
-        ->toContain('don\'t report them as exposed');
+        ->toContain('don\'t report them as exposed')
+        ->toContain('because ufw blocks it: don\'t report it at all');
 });
 
 test('the review is told whether the server is a container, and the limits it runs under', function (string $section, ?array $machine) {
