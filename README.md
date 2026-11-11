@@ -145,6 +145,10 @@ The plugin implements Swage's server integration contract (`App\Servers\ServerIn
 
 The test runs the plugin's migrations itself, and stands in for the Security scanner where it needs one.
 
+## Trademarks
+
+Swage is an independent project and is not affiliated with, endorsed by or sponsored by Laravel, OpenAI or OpenRouter. These names, and any related logos, are trademarks of their respective owners, who also hold the copyright in their products. They are used here only to describe what Swage works with.
+
 ## License
 
 Copyright (c) 2026 Node Dog Consulting. Released under the [MIT License](LICENSE).
